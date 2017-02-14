@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
+import matplotlib.pyplot as plt
 
 
 # Training settings
@@ -38,7 +39,7 @@ if args.cuda:
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-# train_loader = torch.utils.data.DataLoader(
+#train_loader = torch.utils.data.DataLoader(
 #     datasets.MNIST('../data', train=True, download=True,
 #                    transform=transforms.Compose([
 #                        transforms.ToTensor(),
@@ -46,13 +47,12 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 #                    ])),
 #     batch_size=args.batch_size, shuffle=True, **kwargs)
 
-
-
 print('loading data!')
-trainset_labeled = pickle.load(open("train_labeled.p", "rb"))
-validset = pickle.load(open("validation.p", "rb"))
+path = '../../data/'
+trainset_labeled = pickle.load(open(path + "train_labeled.p", "rb"))
+validset = pickle.load(open(path + "validation.p", "rb"))
 #trainset_unlabeled = pickle.load(open("train_unlabeled.p", "rb"))
-
+print('done')
 train_loader = torch.utils.data.DataLoader(trainset_labeled, batch_size=64, shuffle=True, **kwargs)
 valid_loader = torch.utils.data.DataLoader(validset, batch_size=64, shuffle=True)
 
@@ -87,9 +87,17 @@ if args.cuda:
     model.cuda()
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+print ('args.lr', args.lr)
+
+train_accuracy = []
+train_epoch = []
+test_accuracy = []
+test_epoch = []
 
 def train(epoch):
     model.train()
+    correct = 0
+    
     for batch_idx, (data, target) in enumerate(train_loader):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
@@ -99,11 +107,18 @@ def train(epoch):
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
+        
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
+        
+        pred = output.data.max(1)[1] # get the index of the max log-probability
+        correct += pred.eq(target.data).cpu().sum()
 
+    #store values to plot accuracy
+    train_accuracy.append(100. * correct/len(train_loader.dataset))
+            
 def test(epoch, valid_loader):
     model.eval()
     test_loss = 0
@@ -118,12 +133,31 @@ def test(epoch, valid_loader):
         correct += pred.eq(target.data).cpu().sum()
 
     test_loss /= len(valid_loader) # loss function already averages over batch size
+    
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(valid_loader.dataset),
         100. * correct / len(valid_loader.dataset)))
+    
+    #store values to plot accuracy
+    test_accuracy.append(100. * correct / len(valid_loader.dataset))
 
+#for testing
+#args.epochs = 3
 
 for epoch in range(1, args.epochs + 1):
     train(epoch)
     test(epoch, valid_loader)
 
+
+def plot_accuracy(epochs, accuracy_test, accuracy_train):
+    plt.plot(epochs, accuracy_test, label = 'Test')
+    plt.plot(epochs, accuracy_train, label = 'Train')
+    plt.title("Test and Train accuracy")
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.show()
+    
+plot_accuracy(range(1, args.epochs + 1), test_accuracy, train_accuracy)
+    
+    
