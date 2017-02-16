@@ -20,6 +20,7 @@ c = 0
 lr = 1e-3
 
 
+
 def xavier_init(size):
     in_dim = size[0]
     xavier_stddev = 1. / np.sqrt(in_dim / 2.)
@@ -29,19 +30,19 @@ def xavier_init(size):
 # =============================== Q(z|X) ======================================
 
 Wxh = xavier_init(size=[X_dim, h_dim])
-bxh = Variable(torch.zeros(h_dim), requires_grad=True)
+bxh = Variable(torch.zeros(mb_size, h_dim), requires_grad=True)
 
 Whz_mu = xavier_init(size=[h_dim, Z_dim])
-bhz_mu = Variable(torch.zeros(Z_dim), requires_grad=True)
+bhz_mu = Variable(torch.zeros(mb_size, Z_dim), requires_grad=True)
 
 Whz_var = xavier_init(size=[h_dim, Z_dim])
-bhz_var = Variable(torch.zeros(Z_dim), requires_grad=True)
+bhz_var = Variable(torch.zeros(mb_size, Z_dim), requires_grad=True)
 
 
 def Q(X):
-    h = nn.relu(X @ Wxh + bxh.repeat(X.size(0), 1))
-    z_mu = h @ Whz_mu + bhz_mu.repeat(h.size(0), 1)
-    z_var = h @ Whz_var + bhz_var.repeat(h.size(0), 1)
+    h = nn.relu( torch.mm(X, Wxh) + bxh)
+    z_mu = torch.mm(h, Whz_mu) + bhz_mu
+    z_var = torch.mm(h, Whz_var) + bhz_var
     return z_mu, z_var
 
 
@@ -53,15 +54,15 @@ def sample_z(mu, log_var):
 # =============================== P(X|z) ======================================
 
 Wzh = xavier_init(size=[Z_dim, h_dim])
-bzh = Variable(torch.zeros(h_dim), requires_grad=True)
+bzh = Variable(torch.zeros(mb_size, h_dim), requires_grad=True)
 
 Whx = xavier_init(size=[h_dim, X_dim])
-bhx = Variable(torch.zeros(X_dim), requires_grad=True)
+bhx = Variable(torch.zeros(mb_size, X_dim), requires_grad=True)
 
 
 def P(z):
-    h = nn.relu(z @ Wzh + bzh.repeat(z.size(0), 1))
-    X = nn.sigmoid(h @ Whx + bhx.repeat(h.size(0), 1))
+    h = nn.relu(torch.mm(z, Wzh) + bzh)
+    X = nn.sigmoid(torch.mm(h,Whx) + bhx)
     return X
 
 
@@ -72,15 +73,16 @@ params = [Wxh, bxh, Whz_mu, bhz_mu, Whz_var, bhz_var,
 
 solver = optim.Adam(params, lr=lr)
 
-for it in range(100000):
+for it in range(10):
     X, _ = mnist.train.next_batch(mb_size)
     X = Variable(torch.from_numpy(X))
+    print(X.size())
     
     # Forward
     z_mu, z_var = Q(X)
     z = sample_z(z_mu, z_var)
     X_sample = P(z)
-    
+
     # Loss
     recon_loss = nn.binary_cross_entropy(X_sample, X, size_average=False) / mb_size
     kl_loss = torch.mean(0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1. - z_var, 1))
