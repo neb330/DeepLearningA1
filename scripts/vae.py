@@ -1,6 +1,7 @@
 from __future__ import print_function
 import torch
-import torch.nn.functional as nn
+import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms as transforms
 import torch.autograd as autograd
 import torch.optim as optim
@@ -11,7 +12,6 @@ import os
 import pickle
 import argparse
 from torch.autograd import Variable
-from tensorflow.examples.tutorials.mnist import input_data
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -45,21 +45,22 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 print('loading data!')
 path = '../data/'
 trainset_labeled = pickle.load(open(path + "train_labeled.p", "rb"))
+train_loader = torch.utils.data.DataLoader(trainset_labeled, batch_size=args.batch_size, shuffle=True, **kwargs)
 #trainset_unlabeled = pickle.load(open(path + "train_unlabeled.p", "rb"))
-train_loader = torch.utils.data.DataLoader(trainset_labeled, batch_size=10, shuffle=True, **kwargs)
-train_final_load = torch.utils.data.DataLoader(trainset_labeled, batch_size=10, shuffle=True, **kwargs)
+#train_loader = torch.utils.data.DataLoader(trainset_unlabeled, batch_size=args.batch_size, shuffle=True, **kwargs)
 print('done')
 
 
-
+print()
 #mnist = input_data.read_data_sets('../../MNIST_data', one_hot=True)
-mb_size = 10
+mb_size = args.batch_size
 Z_dim = 100
 X_dim = 784
 y_dim = 10
 h_dim = 128
 c = 0
 lr = 1e-3
+data_size = trainset_labeled.train_data.size()[0]
 
 
 def xavier_init(size):
@@ -81,7 +82,7 @@ bhz_var = Variable(torch.zeros(mb_size, Z_dim), requires_grad=True)
 
 
 def Q(X):
-    h = nn.relu( torch.mm(X, Wxh) + bxh)
+    h = F.relu( torch.mm(X, Wxh) + bxh)
     z_mu = torch.mm(h, Whz_mu) + bhz_mu
     z_var = torch.mm(h, Whz_var) + bhz_var
     return z_mu, z_var
@@ -102,8 +103,8 @@ bhx = Variable(torch.zeros(mb_size, X_dim), requires_grad=True)
 
 
 def P(z):
-    h = nn.relu(torch.mm(z, Wzh) + bzh)
-    X = nn.sigmoid(torch.mm(h,Whx) + bhx)
+    h = F.relu(torch.mm(z, Wzh) + bzh)
+    X = F.sigmoid(torch.mm(h,Whx) + bhx)
     return X
 
 
@@ -124,7 +125,7 @@ for batch_idx, (data, target) in enumerate(train_loader):
     X_sample = P(z)
 
     # Loss
-    recon_loss = nn.binary_cross_entropy(X_sample, X, size_average=False) / mb_size
+    recon_loss = F.binary_cross_entropy(X_sample, X, size_average=False) / mb_size
     kl_loss = torch.mean(0.5 * torch.sum(torch.exp(z_var) + z_mu**2 - 1. - z_var, 1))
     loss = recon_loss + kl_loss
     
@@ -163,17 +164,26 @@ for batch_idx, (data, target) in enumerate(train_loader):
         c += 1
         plt.close(fig)
 
-arr = np.zeros((3000, Z_dim))
-for batch_idx, (data, target) in enumerate(train_final_load):
+# extract final vector representations
+encodings = np.zeros((data_size, Z_dim))
+targets = np.zeros(data_size)
+for i, (data, target) in enumerate(train_loader):
     X = data.view(mb_size, 784)
     X = Variable(X)
     
     # Forward
     z_mu, z_var = Q(X)
     z = sample_z(z_mu, z_var)
-    #new_z = z.asNumpyTensor()
-    print(new_z.shape)
-#np.append(arr, np.array(z), axis=0)
+    
+    start_index = i * args.batch_size
+    end_index = start_index + args.batch_size
+    encodings[start_index:end_index, :] = z.data.numpy()
+    targets[start_index:end_index] = target.numpy()
+print(end_index)
+
+np.savetxt((path + 'vae_encodings.txt'), encodings, delimiter=' ')
+np.savetxt((path + 'vae_targets.txt'), targets, delimiter=' ')
+
 
 
 
