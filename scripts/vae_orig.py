@@ -12,6 +12,7 @@ import os
 import pickle
 import argparse
 from torch.autograd import Variable
+from tensorflow.examples.tutorials.mnist import input_data
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -21,7 +22,7 @@ parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                     help='input batch size for testing (default: 1000)')
 parser.add_argument('--epochs', type=int, default=10, metavar='N',
                     help='number of epochs to train (default: 10)')
-parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
+parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                     help='learning rate (default: 0.01)')
 parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
                     help='SGD momentum (default: 0.5)')
@@ -45,20 +46,20 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 print('loading data!')
 path = '../data/'
 trainset_labeled = pickle.load(open(path + "train_labeled.p", "rb"))
-final_loader_train = torch.utils.data.DataLoader(trainset_labeled, batch_size=args.batch_size, shuffle=True, **kwargs)
-validset = pickle.load(open(path + "validation.p", "rb"))
-final_loader_val = torch.utils.data.DataLoader(validset, batch_size=args.batch_size, shuffle=True, **kwargs)
-trainset_unlabeled = pickle.load(open(path + "total_data.p", "rb"))
+final_loader = torch.utils.data.DataLoader(trainset_labeled, batch_size=args.batch_size, shuffle=True, **kwargs)
+'''trainset_unlabeled = pickle.load(open(path + "total_data.p", "rb"))
 train_loader = torch.utils.data.DataLoader(trainset_unlabeled, batch_size=args.batch_size, shuffle=True, **kwargs)
-print('done')
+print('done')'''
 
 print()
-#mnist = input_data.read_data_sets('../../MNIST_data', one_hot=True)
+mnist = input_data.read_data_sets('../../MNIST_data', one_hot=True)
 mb_size = args.batch_size
 Z_dim = 100
-X_dim = 784
+X_dim = mnist.train.images.shape[1]
 y_dim = 10
 h_dim = 128
+lr = 1e-3
+data_size = trainset_labeled.train_data.size()[0]
 
 
 def xavier_init(size):
@@ -111,13 +112,15 @@ def P(z):
 params = [Wxh, bxh, Whz_mu, bhz_mu, Whz_var, bhz_var,
           Wzh, bzh, Whx, bhx]
 
-solver = optim.Adam(params, lr=args.lr)
+solver = optim.Adam(params, lr=lr)
 
 
 def train(epoch):
-    for batch_idx, (data, target) in enumerate(train_loader):
-        X = data.view(mb_size, 784)
-        X = Variable(X)
+    c = 0
+    for it in range(10000):
+        X, _ = mnist.train.next_batch(mb_size)
+        X = Variable(torch.from_numpy(X))
+        
     
         # Forward
         z_mu, z_var = Q(X)
@@ -138,14 +141,14 @@ def train(epoch):
         # Housekeeping
         for p in params:
             p.grad.data.zero_()
-        
+    
         # Print and plot every now and then
-        if batch_idx % 1000 == 0:
-            print('Epoch-{}, Iter-{}; Loss: {:.4}'.format(epoch, batch_idx, loss.data[0]))
-            
+        if it % 1000 == 0:
+            print('Epoch-{}, Loss: {:.4}'.format(it, loss.data[0]))
+        
             samples = P(z).data.numpy()[:16]
         
-            '''fig = plt.figure(figsize=(4, 4))
+            fig = plt.figure(figsize=(4, 4))
             gs = gridspec.GridSpec(4, 4)
             gs.update(wspace=0.05, hspace=0.05)
         
@@ -160,40 +163,33 @@ def train(epoch):
             if not os.path.exists('out/'):
                 os.makedirs('out/')
         
-            plt.savefig('out/{}.png'.format(str(epoch).zfill(3)), bbox_inches='tight')
-            plt.close(fig)'''
+            plt.savefig('out/{}.png'.format(str(c).zfill(3)), bbox_inches='tight')
+            c+=1
+            plt.close(fig)
 
-args.epochs = 5000
-for epoch in range(1, args.epochs + 1):
+
+for epoch in range(1, 2):
     train(epoch)
 
-
 # extract final vector representations
-def extract_reps(loader, dataset, ext):
-    data_size = len(dataset)
-    encodings = np.zeros((data_size, Z_dim))
-    targets = np.zeros(data_size)
-    for i, (data, target) in enumerate(loader):
-        X = data.view(mb_size, 784)
-        X = Variable(X)
+encodings = np.zeros((data_size, Z_dim))
+targets = np.zeros(data_size)
+for i, (data, target) in enumerate(final_loader):
+    X = data.view(mb_size, 784)
+    X = Variable(X)
     
-        # Forward
-        z_mu, z_var = Q(X)
-        z = sample_z(z_mu, z_var)
+    # Forward
+    z_mu, z_var = Q(X)
+    z = sample_z(z_mu, z_var)
     
-        start_index = i * args.batch_size
-        end_index = start_index + args.batch_size
-        encodings[start_index:end_index, :] = z.data.numpy()
-        targets[start_index:end_index] = target.numpy()
-    
-    
-    np.savetxt((path + 'vae_encodings.' + ext), encodings, delimiter=' ')
-    np.savetxt((path + 'vae_targets.' + ext), targets, delimiter=' ')
+    start_index = i * args.batch_size
+    end_index = start_index + args.batch_size
+    encodings[start_index:end_index, :] = z.data.numpy()
+    targets[start_index:end_index] = target.numpy()
 
 
-extract_reps(final_loader_train, trainset_labeled, 'tr')
-extract_reps(final_loader_val, validset, 'val')
-
+np.savetxt((path + 'vae_encodings.txt'), encodings, delimiter=' ')
+np.savetxt((path + 'vae_targets.txt'), targets, delimiter=' ')
 
 
 

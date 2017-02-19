@@ -48,7 +48,7 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 #     batch_size=args.batch_size, shuffle=True, **kwargs)
 
 print('loading data!')
-path = '../../data/'
+path = '../data/'
 trainset_labeled = pickle.load(open(path + "train_labeled.p", "rb"))
 validset = pickle.load(open(path + "validation.p", "rb"))
 #trainset_unlabeled = pickle.load(open("train_unlabeled.p", "rb"))
@@ -103,6 +103,7 @@ def train(epoch):
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         optimizer.zero_grad()
+        print(data.size())
         output = model(data)
         loss = F.nll_loss(output, target)
         loss.backward()
@@ -142,7 +143,7 @@ def test(epoch, valid_loader):
     test_accuracy.append(100. * correct / len(valid_loader.dataset))
 
 #for testing
-#args.epochs = 3
+args.epochs = 3
 
 for epoch in range(1, args.epochs + 1):
     train(epoch)
