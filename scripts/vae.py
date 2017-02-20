@@ -22,7 +22,7 @@ parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
 parser.add_argument('--epochs', type=int, default=10, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
-                    help='learning rate (default: 0.01)')
+                    help='learning rate (default: 1e-3)')
 parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -145,7 +145,7 @@ def train(epoch):
             
             samples = P(z).data.numpy()[:16]
         
-            '''fig = plt.figure(figsize=(4, 4))
+            fig = plt.figure(figsize=(4, 4))
             gs = gridspec.GridSpec(4, 4)
             gs.update(wspace=0.05, hspace=0.05)
         
@@ -161,9 +161,9 @@ def train(epoch):
                 os.makedirs('out/')
         
             plt.savefig('out/{}.png'.format(str(epoch).zfill(3)), bbox_inches='tight')
-            plt.close(fig)'''
+            plt.close(fig)
 
-args.epochs = 5000
+args.epochs = 20
 for epoch in range(1, args.epochs + 1):
     train(epoch)
 
