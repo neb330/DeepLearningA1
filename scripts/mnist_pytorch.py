@@ -9,6 +9,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
+import seaborn
 
 
 # Training settings
@@ -49,50 +50,48 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
 print('loading data!')
 path = '../../data/'
-trainset_labeled = pickle.load(open(path + "train_labeled.p", "rb"))
-validset = pickle.load(open(path + "validation.p", "rb"))
-#trainset_unlabeled = pickle.load(open("train_unlabeled.p", "rb"))
-print('done')
+#trainset_labeled = pickle.load(open(path + "train_labeled.p", "rb"))
+
+#augmented data
+trainset_labeled = pickle.load(open(path + "trainset_new.p", "rb"))
+##
+#validset = pickle.load(open(path + "validation.p", "rb"))
+##trainset_unlabeled = pickle.load(open(path + "train_unlabeled.p", "rb"))
+##print('done')
+##
 train_loader = torch.utils.data.DataLoader(trainset_labeled, batch_size=64, shuffle=True, **kwargs)
-valid_loader = torch.utils.data.DataLoader(validset, batch_size=64, shuffle=True)
+#valid_loader = torch.utils.data.DataLoader(validset, batch_size=64, shuffle=True)
+#unlabeled_loader = torch.utils.data.DataLoader(trainset_unlabeled, batch_size=64, shuffle=True)
 
 # test_loader = torch.utils.data.DataLoader(
 #     datasets.MNIST('../data', train=False, transform=transforms.Compose([
 #                        transforms.ToTensor(),
-#                        transforms.Normalize((0.1307,), (0.3081,))
+#                        transforms.Normalize(
 #                    ])),
 #     batch_size=args.batch_size, shuffle=True, **kwargs)
+
 
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.conv1 = nn.Conv2d(1, 8, kernel_size=3, padding=2)
+#        self.conv1 = nn.Conv2d(1, 8, kernel_size=4)
+#        self.conv2 = nn.Conv2d(8, 16, kernel_size=4)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, padding=2)
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
+        self.fc1 = nn.Linear(1024, 512)
+        self.fc2 = nn.Linear(512, 10)
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
+        print ('x', x.size())
+        x = x.view(-1, 1024)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = F.relu(self.fc2(x))
         return F.log_softmax(x)
-
-model = Net()
-if args.cuda:
-    model.cuda()
-
-optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-print ('args.lr', args.lr)
-
-train_accuracy = []
-train_epoch = []
-test_accuracy = []
-test_epoch = []
 
 def train(epoch):
     model.train()
@@ -102,6 +101,7 @@ def train(epoch):
         if args.cuda:
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
+#        print ('target size', target.size())
         optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
@@ -141,23 +141,99 @@ def test(epoch, valid_loader):
     #store values to plot accuracy
     test_accuracy.append(100. * correct / len(valid_loader.dataset))
 
-#for testing
-#args.epochs = 3
+def plot_accuracy(epochs, accuracy_test, accuracy_train):
+    plt.plot(epochs, accuracy_test, label = 'Validation')
+    plt.plot(epochs, accuracy_train, label = 'Train')
+    plt.title("Validation and Train accuracy")
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12),
+               fancybox=True, shadow=True, ncol=5)
+    plt.show()
 
+def plot_accuracy_zoomin(epochs, accuracy_test, accuracy_train):
+    plt.plot(epochs, accuracy_test, label = 'Validation')
+    plt.plot(epochs, accuracy_train, label = 'Train')
+    plt.title("Validation and Train accuracy")
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.ylim((90,100))
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12),
+               fancybox=True, shadow=True, ncol=5)
+    plt.show()    
+    
+def plot_accuracy_grid(epochs, accuracy, parameter_values, parameter_name, title, plot_train=False):
+    for i in range(len(parameter_values)):
+        if plot_train:
+            plt.plot(epochs, accuracy[i][0], label = 'Trainig data ' + 
+                 parameter_name[i] + ' ' + str(parameter_values[i]))
+        plt.plot(epochs, accuracy[i][1], label = parameter_name + ' ' + str(parameter_values[i]))
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend(loc='upper center', bbox_to_anchor=(1.2, 0.8), shadow=True, ncol=1)
+    plt.title(title)
+    plt.show()
+    
+#for testing
+args.epochs = 10
+args.lr = 0.003
+args.momentum = 0.95
+model = Net()
+if args.cuda:
+    model.cuda()
+
+optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+print ('args.lr', args.lr)
+
+train_accuracy = []
+train_epoch = []
+test_accuracy = []
+test_epoch = []
 for epoch in range(1, args.epochs + 1):
     train(epoch)
     test(epoch, valid_loader)
-
-
-def plot_accuracy(epochs, accuracy_test, accuracy_train):
-    plt.plot(epochs, accuracy_test, label = 'Test')
-    plt.plot(epochs, accuracy_train, label = 'Train')
-    plt.title("Test and Train accuracy")
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    plt.show()
-    
 plot_accuracy(range(1, args.epochs + 1), test_accuracy, train_accuracy)
+plot_accuracy_zoomin(range(1, args.epochs + 1), test_accuracy, train_accuracy)
+
+
+#testset = pickle.load(open(path + "test.p", "rb"))
+#test_loader = torch.utils.data.DataLoader(testset,batch_size=64, shuffle=False)
+
+print (test(1, test_loader))
+
+
+#momentum = [0.5, 0.9, 0.95, 0.99]
+#args.momentum = 0.95
+#train_accuracy = []
+#train_epoch = []
+#test_accuracy = []
+#test_epoch = []
+#accuracy = []
+#
+#model = Net()
+#print ('args.lr', args.lr)
+#
+#for i in range(1):
+#    model = Net()
+#    args.epochs = 1
+#    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+##    optimizer = optim.nag(model.parameters(), lr=args.lr, momentum=args.momentum)
+#    print ('args.lr', args.lr)
+#    
+#    train_accuracy = []
+#    train_epoch = []
+#    test_accuracy = []
+#    test_epoch = []
+#    for epoch in range(1, args.epochs + 1):
+#        train(epoch)
+#        test(epoch, valid_loader)
+#    accuracy.append([train_accuracy, test_accuracy])
+#plot_accuracy_grid(range(1, args.epochs + 1), accuracy, num_epochs, 'Number of Epochs', 
+#'Accuracy by number of epochs (validation set)', False)
+
+
+
+    
+
     
     
