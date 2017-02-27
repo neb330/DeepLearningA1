@@ -9,6 +9,8 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
+import math
+
 
 
 # Training settings
@@ -52,7 +54,7 @@ path = './'
 trainset_labeled = pickle.load(open(path + "train_labeled.p", "rb"))
 validset = pickle.load(open(path + "validation.p", "rb"))
 trainset_unlabeled = pickle.load(open("train_unlabeled.p", "rb"))
-
+print("labeled set size", trainset_labeled)
 
 
 # print("type of unlabeled data")
@@ -70,15 +72,14 @@ train_unlabeled_loader = torch.utils.data.DataLoader(trainset_unlabeled, batch_s
 #     batch_size=args.batch_size, shuffle=True, **kwargs)
 
 
-def weightingFunction(epoch,T1=2.0,T2=20.0,alpha =.15):
+
+def weightingFunction(epoch,T1=10.1,T2=30,alpha =.25):
     if epoch<T1:
         return 0
-    elif (epoch>T1) and (epoch<T2):
+    elif (epoch>=T1) and (epoch<=T2):
         return alpha*( T1 - epoch)/(T1-T2)
     else :
         return alpha
-
-
 
     
 class Net(nn.Module):
@@ -87,8 +88,28 @@ class Net(nn.Module):
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
+        self.fc1 = nn.Linear(320, 160)
+        self.fc2 = nn.Linear(160, 80)
+
+        self.fc3 = nn.Linear(80, 10)
+
+        # print ("modules", self.modules())
+        # for m in self.modules():
+        #     print("module", m)
+        #     if isinstance(m, nn.Linear):
+        #         size = m.weight.size()
+        #         fan_out = size[0] # number of rows
+        #         fan_in = size[1] # number of columns
+        #         n = fan_out*fan_in
+        #         m.weight.data.uniform_(-.01, .01)
+            # if isinstance(m, nn.Conv2d):
+            #     n = m.size()
+            #     print("module", m)
+            #     print("num param ",n)
+            #     m.weight.data.uniform_(-math.sqrt(6/(n+1)), math.sqrt(6/(n+1)))
+            # elif isinstance(m, nn.BatchNorm2d):
+            #     m.weight.data.fill_(1)
+            #     m.bias.data.zero_()
 
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
@@ -97,6 +118,8 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = F.relu(self.fc2(x))
+        x = F.dropout(x, training=self.training)
+        x = F.relu(self.fc3(x))
         return F.log_softmax(x)
 
 model = Net()
@@ -117,7 +140,10 @@ def train_unlabeled(epoch):
     correct = 0
     print("epoch of unlabeled, " , epoch)
     print("weighing function" , weightingFunction(epoch))
+    lastTestAccuracy = test_accuracy[-1]
 
+    if weightingFunction(epoch)==0:
+        return  
 
     for batch_idx, (data, target) in enumerate(train_unlabeled_loader):
         if args.cuda:
@@ -132,10 +158,6 @@ def train_unlabeled(epoch):
         target = target.view(target.size()[0]) #make 1d array
         target = Variable(target)
 
-        # print("new batch")
-        # # print (output.data)
-        # print("target size",target)
-        # # print ("output",output)
 
 
         loss = weightingFunction(epoch)*F.nll_loss(output, target)
@@ -158,6 +180,7 @@ def train_unlabeled(epoch):
 def train(epoch):
     model.train()
     correct = 0
+
     print("epoch of unlabeled")
 
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -169,11 +192,6 @@ def train(epoch):
         optimizer.zero_grad()
         output = model(data)
 
-        #target =  Variable(output.data.max(1)[1])
-        # print (output.data.max(1)[1].numpy() == target.numpy())
-        # print("new batch")
-        # print("target",target)
-        # print ("output",output)
 
         loss = F.nll_loss(output, target)
         loss.backward()
@@ -214,7 +232,7 @@ def test(epoch, valid_loader):
     test_accuracy.append(100. * correct / float(len(valid_loader.dataset)))
 
 #for testing
-args.epochs = 40
+args.epochs = 160
 
 for epoch in range(1, args.epochs + 1):
     train(epoch)
